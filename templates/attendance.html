@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>تسجيل حضور لحظي</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+<!-- Top navigation, shared across all pages -->
+<nav class="topbar">
+    <div class="topbar-inner">
+        <a href="/" class="brand"><span class="brand-mark">◎</span> نظام الحضور</a>
+        <div class="topbar-links">
+            <a href="/enroll" class="topbar-link">تسجيل شخص</a>
+            <a href="/attendance" class="topbar-link active">تسجيل حضور</a>
+            <a href="/dashboard" class="topbar-link">التقارير</a>
+            <a href="/manage" class="topbar-link">الإدارة</a>
+        </div>
+    </div>
+</nav>
+
+<div class="page">
+    <a href="/" class="back-link">→ الرئيسية</a>
+    <div class="page-header">
+        <h1>تسجيل الحضور اللحظي</h1>
+        <p>قف أمام الكاميرا مباشرة، النظام يتعرف عليك تلقائياً</p>
+    </div>
+
+    <!-- Live camera feed with a biometric-scanner style overlay -->
+    <div class="scanner">
+        <video id="video" autoplay playsinline muted></video>
+        <canvas id="overlay"></canvas>
+        <div class="scanner-corners"><span></span><span></span><span></span><span></span></div>
+        <div class="scan-line"></div>
+        <div class="live-badge"><span class="live-dot"></span> مباشر</div>
+    </div>
+
+    <!-- Recognition result, updated after every polling cycle -->
+    <div class="readout state-idle" id="readout">
+        <p class="status-text" id="statusText">🔍 جاري البحث عن وجه...</p>
+        <p class="status-meta" id="statusMeta">&nbsp;</p>
+    </div>
+</div>
+
+<!-- Off-screen canvas used only to serialize video frames to base64 -->
+<canvas id="captureCanvas" style="display:none;"></canvas>
+
+<script>
+const video = document.getElementById('video');
+const overlay = document.getElementById('overlay');
+const ctx = overlay.getContext('2d');
+const captureCanvas = document.getElementById('captureCanvas');
+const readout = document.getElementById('readout');
+const statusText = document.getElementById('statusText');
+const statusMeta = document.getElementById('statusMeta');
+
+// Prevents overlapping requests if a response takes longer than the poll interval.
+let busy = false;
+
+navigator.mediaDevices.getUserMedia({ video: true })
+    .then(stream => {
+        video.srcObject = stream;
+        video.onloadedmetadata = () => {
+            // Overlay is sized to the rendered video, not its native
+            // resolution, so drawing coordinates must be scaled later.
+            overlay.width = video.clientWidth;
+            overlay.height = video.clientHeight;
+        };
+    })
+    .catch(() => {
+        statusText.textContent = "⚠️ لم يتم السماح بالوصول للكاميرا";
+        readout.className = "readout state-error";
+    });
+
+// Draws a bounding box scaled from the server's native frame size to the
+// overlay's rendered size, since the two rarely match.
+function drawBox(box, frameSize, label, color) {
+    ctx.clearRect(0, 0, overlay.width, overlay.height);
+    if (!box) return;
+
+    const scaleX = overlay.width / frameSize.width;
+    const scaleY = overlay.height / frameSize.height;
+    const left = box.left * scaleX;
+    const top = box.top * scaleY;
+    const width = (box.right - box.left) * scaleX;
+    const height = (box.bottom - box.top) * scaleY;
+
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3;
+    ctx.strokeRect(left, top, width, height);
+
+    ctx.fillStyle = color;
+    ctx.font = "700 16px Tajawal, sans-serif";
+    ctx.fillText(label, left, top - 10);
+}
+
+function setReadout(state, text, meta) {
+    readout.className = "readout state-" + state;
+    statusText.textContent = text;
+    statusMeta.textContent = meta || "\u00A0";
+}
+
+// Captures one frame, sends it for recognition, and updates the overlay
+// and readout based on the result.
+async function captureAndRecognize() {
+    if (busy) return;
+    busy = true;
+
+    captureCanvas.width = video.videoWidth;
+    captureCanvas.height = video.videoHeight;
+    captureCanvas.getContext('2d').drawImage(video, 0, 0);
+    const imageData = captureCanvas.toDataURL('image/jpeg', 0.8);
+
+    try {
+        const response = await fetch('/api/recognize_live', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ image: imageData })
+        });
+        const result = await response.json();
+        const now = new Date().toLocaleTimeString('ar-EG');
+
+        if (!result.face_found) {
+            ctx.clearRect(0, 0, overlay.width, overlay.height);
+            setReadout("idle", "🔍 جاري البحث عن وجه...", now);
+        } else if (!result.known) {
+            drawBox(result.box, result.frame_size, result.label, "#FF6B6B");
+            setReadout("unknown", "⚠️ " + result.message, now);
+        } else {
+            // Maps backend attendance events to overlay colors and readout
+            // states so check-in/check-out/duplicate are visually distinct.
+            const colorMap = { check_in: "#33D69F", check_out: "#4FC3F7", already_in: "#FFB84D", already_out: "#8890A6" };
+            const stateMap = { check_in: "in", check_out: "out", already_in: "unknown", already_out: "idle" };
+            drawBox(result.box, result.frame_size, result.label, colorMap[result.event] || "#5B8CFF");
+            setReadout(stateMap[result.event] || "idle", result.message, `المسافة: ${result.distance}  •  ${now}`);
+        }
+    } catch (e) {
+        setReadout("error", "⚠️ خطأ في الاتصال بالسيرفر", "");
+    }
+
+    busy = false;
+}
+
+// Polls every 1.2s rather than per-frame; recognition takes 100-300ms
+// server-side, so streaming every frame would overload the backend.
+setInterval(captureAndRecognize, 1200);
+</script>
+</body>
+</html>

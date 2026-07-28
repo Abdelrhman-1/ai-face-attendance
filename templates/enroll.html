@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>تسجيل شخص جديد</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+<!-- Top navigation, shared across all pages -->
+<nav class="topbar">
+    <div class="topbar-inner">
+        <a href="/" class="brand"><span class="brand-mark">◎</span> نظام الحضور</a>
+        <div class="topbar-links">
+            <a href="/enroll" class="topbar-link active">تسجيل شخص</a>
+            <a href="/attendance" class="topbar-link">تسجيل حضور</a>
+            <a href="/dashboard" class="topbar-link">التقارير</a>
+            <a href="/manage" class="topbar-link">الإدارة</a>
+        </div>
+    </div>
+</nav>
+
+<div class="page">
+    <a href="/" class="back-link">→ الرئيسية</a>
+    <div class="page-header">
+        <h1>تسجيل شخص جديد</h1>
+        <p>أدخل البيانات، ثم صوّر الوجه أو ارفع صورة واضحة</p>
+    </div>
+
+    <div class="card">
+        <div class="field">
+            <label>الاسم الكامل</label>
+            <input type="text" id="nameInput" placeholder="مثال: أحمد محمد">
+        </div>
+        <div class="field">
+            <label>رقم الجوال (اختياري)</label>
+            <input type="tel" id="phoneInput" placeholder="05xxxxxxxx">
+        </div>
+
+        <!-- Two mutually exclusive capture methods; only one populates
+             currentImageDataUrl, which the submit handler reads from -->
+        <div class="tabs">
+            <button class="tab-btn active" data-tab="camera">📷 تصوير مباشر</button>
+            <button class="tab-btn" data-tab="upload">⬆️ رفع صورة</button>
+        </div>
+
+        <div class="tab-panel active" id="panel-camera">
+            <div class="scanner">
+                <video id="video" autoplay playsinline muted></video>
+                <div class="scanner-corners"><span></span><span></span><span></span><span></span></div>
+            </div>
+            <div class="btn-row" style="margin-top:16px;">
+                <button id="snapBtn" class="btn secondary">📸 التقط الصورة</button>
+            </div>
+        </div>
+
+        <div class="tab-panel" id="panel-upload">
+            <div class="upload-zone" id="uploadZone">
+                <span class="icon">🖼️</span>
+                اضغط هنا لاختيار صورة من جهازك
+                <input type="file" id="fileInput" accept="image/*" style="display:none;">
+            </div>
+        </div>
+
+        <div class="preview-wrap" id="previewWrap">
+            <img id="previewImg" alt="معاينة الصورة">
+        </div>
+
+        <div class="btn-row" style="margin-top:24px;">
+            <button id="submitBtn" class="btn full" disabled>✅ تسجيل الشخص</button>
+        </div>
+
+        <p id="statusMsg" class="status" style="margin-top:14px;"></p>
+    </div>
+</div>
+
+<!-- Off-screen canvas used only to serialize captured video frames to base64 -->
+<canvas id="captureCanvas" style="display:none;"></canvas>
+
+<script>
+const video = document.getElementById('video');
+const captureCanvas = document.getElementById('captureCanvas');
+const previewWrap = document.getElementById('previewWrap');
+const previewImg = document.getElementById('previewImg');
+const submitBtn = document.getElementById('submitBtn');
+const statusMsg = document.getElementById('statusMsg');
+
+// Holds whichever image (camera or upload) is ready to submit.
+let currentImageDataUrl = null;
+
+document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById('panel-' + btn.dataset.tab).classList.add('active');
+    });
+});
+
+navigator.mediaDevices.getUserMedia({ video: true })
+    .then(stream => { video.srcObject = stream; })
+    .catch(() => { statusMsg.textContent = "⚠️ لم يتم السماح بالوصول للكاميرا"; statusMsg.className = "status error"; });
+
+// Shared by both capture methods so the submit button only enables
+// once an actual image is ready, regardless of its source.
+function setPreview(dataUrl) {
+    currentImageDataUrl = dataUrl;
+    previewImg.src = dataUrl;
+    previewWrap.style.display = 'block';
+    submitBtn.disabled = false;
+    statusMsg.textContent = "";
+}
+
+document.getElementById('snapBtn').addEventListener('click', () => {
+    captureCanvas.width = video.videoWidth;
+    captureCanvas.height = video.videoHeight;
+    captureCanvas.getContext('2d').drawImage(video, 0, 0);
+    setPreview(captureCanvas.toDataURL('image/jpeg', 0.9));
+});
+
+const uploadZone = document.getElementById('uploadZone');
+const fileInput = document.getElementById('fileInput');
+uploadZone.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', () => {
+    const file = fileInput.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => setPreview(e.target.result);
+    reader.readAsDataURL(file);
+});
+
+submitBtn.addEventListener('click', async () => {
+    const name = document.getElementById('nameInput').value.trim();
+    const phone = document.getElementById('phoneInput').value.trim();
+
+    if (!name) {
+        statusMsg.textContent = "⚠️ الرجاء إدخال الاسم أولاً";
+        statusMsg.className = "status error";
+        return;
+    }
+    if (!currentImageDataUrl) {
+        statusMsg.textContent = "⚠️ الرجاء التقاط أو رفع صورة أولاً";
+        statusMsg.className = "status error";
+        return;
+    }
+
+    submitBtn.disabled = true;
+    statusMsg.textContent = "⏳ جاري المعالجة...";
+    statusMsg.className = "status";
+
+    try {
+        const response = await fetch('/api/enroll', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, phone, image: currentImageDataUrl })
+        });
+        const result = await response.json();
+        statusMsg.textContent = result.message;
+        statusMsg.className = "status " + (result.success ? "success" : "error");
+        submitBtn.disabled = false;
+
+        if (result.success) {
+            // Reset the form so the same page can be reused to enroll
+            // the next person without a manual refresh.
+            document.getElementById('nameInput').value = "";
+            document.getElementById('phoneInput').value = "";
+            previewWrap.style.display = 'none';
+            currentImageDataUrl = null;
+            submitBtn.disabled = true;
+        }
+    } catch (e) {
+        statusMsg.textContent = "⚠️ خطأ في الاتصال بالسيرفر";
+        statusMsg.className = "status error";
+        submitBtn.disabled = false;
+    }
+});
+</script>
+</body>
+</html>

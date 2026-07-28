@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>لوحة التقارير</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+<!-- Top navigation, shared across all pages -->
+<nav class="topbar">
+    <div class="topbar-inner">
+        <a href="/" class="brand"><span class="brand-mark">◎</span> نظام الحضور</a>
+        <div class="topbar-links">
+            <a href="/enroll" class="topbar-link">تسجيل شخص</a>
+            <a href="/attendance" class="topbar-link">تسجيل حضور</a>
+            <a href="/dashboard" class="topbar-link active">التقارير</a>
+            <a href="/manage" class="topbar-link">الإدارة</a>
+        </div>
+    </div>
+</nav>
+
+<div class="page wide">
+    <a href="/" class="back-link">→ الرئيسية</a>
+    <div class="page-header">
+        <h1>لوحة التقارير</h1>
+        <p>كل سجلات الحضور والانصراف في مكان واحد</p>
+    </div>
+
+    <!-- Search and filter controls, plus manual refresh and CSV export -->
+    <div class="toolbar">
+        <div class="toolbar-group">
+            <input type="text" id="searchInput" class="input-sm" placeholder="🔍 بحث بالاسم...">
+            <select id="statusFilter" class="input-sm">
+                <option value="">كل الحالات</option>
+                <option value="حضور">حضور فقط</option>
+                <option value="انصراف">انصراف فقط</option>
+            </select>
+        </div>
+        <div class="toolbar-group">
+            <button id="refreshBtn" class="btn secondary small">🔄 تحديث</button>
+            <button id="exportBtn" class="btn small">⬇️ تصدير CSV</button>
+        </div>
+    </div>
+
+    <span class="count-pill" id="countMsg">جاري التحميل...</span>
+
+    <div class="table-wrap">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>الاسم</th>
+                    <th>الحالة</th>
+                    <th>الوقت</th>
+                    <th>المسافة</th>
+                </tr>
+            </thead>
+            <tbody id="tableBody">
+                <tr class="empty-row"><td colspan="5">جاري التحميل...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+// Records are fetched once and filtered/exported client-side; fine for
+// this scale, but would need server-side filtering for large datasets.
+let allRecords = [];
+
+async function loadRecords() {
+    document.getElementById('tableBody').innerHTML = "<tr class='empty-row'><td colspan='5'>جاري التحميل...</td></tr>";
+    const response = await fetch('/api/records');
+    allRecords = await response.json();
+    renderTable();
+}
+
+function renderTable() {
+    const search = document.getElementById('searchInput').value.trim().toLowerCase();
+    const statusFilter = document.getElementById('statusFilter').value;
+
+    let filtered = allRecords.filter(r => {
+        const matchesSearch = !search || (r.person_name || "").toLowerCase().includes(search);
+        const matchesStatus = !statusFilter || r.status === statusFilter;
+        return matchesSearch && matchesStatus;
+    });
+
+    const tbody = document.getElementById('tableBody');
+    document.getElementById('countMsg').textContent = `${filtered.length} سجل`;
+
+    if (filtered.length === 0) {
+        tbody.innerHTML = "<tr class='empty-row'><td colspan='5'>لا توجد سجلات مطابقة</td></tr>";
+        return;
+    }
+
+    tbody.innerHTML = filtered.map((r, i) => {
+        const date = new Date(r.timestamp);
+        const formattedDate = date.toLocaleString('ar-EG');
+        const statusClass = r.status === "حضور" ? "badge-in" : "badge-out";
+        return `
+            <tr>
+                <td class="mono">${i + 1}</td>
+                <td>${r.person_name || '—'}</td>
+                <td><span class="badge ${statusClass}">${r.status}</span></td>
+                <td class="mono">${formattedDate}</td>
+                <td class="mono">${r.confidence !== null ? r.confidence.toFixed(3) : '—'}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+// Re-applies the current search/filter state and exports the visible
+// subset, rather than always exporting the full unfiltered dataset.
+function exportToCSV() {
+    const search = document.getElementById('searchInput').value.trim().toLowerCase();
+    const statusFilter = document.getElementById('statusFilter').value;
+    let filtered = allRecords.filter(r => {
+        const matchesSearch = !search || (r.person_name || "").toLowerCase().includes(search);
+        const matchesStatus = !statusFilter || r.status === statusFilter;
+        return matchesSearch && matchesStatus;
+    });
+
+    let csv = "الاسم,الحالة,الوقت,المسافة\n";
+    filtered.forEach(r => {
+        const date = new Date(r.timestamp).toLocaleString('ar-EG');
+        csv += `"${r.person_name}","${r.status}","${date}","${r.confidence}"\n`;
+    });
+
+    // Leading BOM ensures Excel opens the file as UTF-8 instead of
+    // misreading the Arabic text as another encoding.
+    const blob = new Blob(["\uFEFF" + csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `attendance_report_${new Date().toISOString().slice(0,10)}.csv`;
+    link.click();
+}
+
+document.getElementById('searchInput').addEventListener('input', renderTable);
+document.getElementById('statusFilter').addEventListener('change', renderTable);
+document.getElementById('refreshBtn').addEventListener('click', loadRecords);
+document.getElementById('exportBtn').addEventListener('click', exportToCSV);
+
+loadRecords();
+</script>
+</body>
+</html>
