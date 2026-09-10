@@ -3,50 +3,49 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>نظام الحضور والغياب</title>
+<title>نظام حضور الطلاب</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
 
-<!-- Top navigation, shared across all pages -->
 <nav class="topbar">
     <div class="topbar-inner">
         <a href="/" class="brand"><span class="brand-mark">◎</span> نظام الحضور</a>
         <div class="topbar-links">
-            <a href="/enroll" class="topbar-link">تسجيل شخص</a>
-            <a href="/attendance" class="topbar-link">تسجيل حضور</a>
-            <a href="/dashboard" class="topbar-link">التقارير</a>
-            <a href="/manage" class="topbar-link">الإدارة</a>
+            <a href="/enroll" class="topbar-link">تسجيل طالب</a>
+            <a href="/week" class="topbar-link">الأسبوع</a>
+            <a href="/manage" class="topbar-link">الطلاب</a>
+            <a href="/settings" class="topbar-link">الإعدادات</a>
         </div>
     </div>
 </nav>
 
 <div class="page">
     <div class="page-header">
-        <h1>نظام تسجيل الحضور والغياب</h1>
-        <p>تعرّف تلقائي على الوجه، وتسجيل فوري للحضور والانصراف</p>
+        <h1>نظام حضور الطلاب الأسبوعي</h1>
+        <p>درسا الأحد والخميس، تعرف تلقائي على الوجه، وتتبع أسبوعي كامل</p>
     </div>
 
     <div class="home-grid">
         <a href="/enroll" class="home-card">
             <span class="icon">➕</span>
-            <span class="title">تسجيل شخص جديد</span>
-            <span class="desc">إضافة موظف وصورته للنظام</span>
+            <span class="title">تسجيل طالب جديد</span>
+            <span class="desc">الاسم، الهوية، الجوال، والوجه</span>
         </a>
-        <a href="/attendance" class="home-card">
-            <span class="icon">📷</span>
-            <span class="title">تسجيل حضور</span>
-            <span class="desc">كشف مباشر عبر الكاميرا</span>
-        </a>
-        <a href="/dashboard" class="home-card">
-            <span class="icon">📊</span>
-            <span class="title">لوحة التقارير</span>
-            <span class="desc">سجلات الحضور والانصراف</span>
+        <a href="/week" class="home-card">
+            <span class="icon">📅</span>
+            <span class="title">الأسبوع الحالي</span>
+            <span class="desc">بدء الدروس، الاعتذارات، الإحصائيات</span>
         </a>
         <a href="/manage" class="home-card">
             <span class="icon">👥</span>
-            <span class="title">إدارة الأشخاص</span>
-            <span class="desc">عرض وحذف المسجلين</span>
+            <span class="title">إدارة الطلاب</span>
+            <span class="desc">بحث، تعديل، وسجل الحضور</span>
+        </a>
+        <a href="/settings" class="home-card">
+            <span class="icon">⚙️</span>
+            <span class="title">الإعدادات</span>
+            <span class="desc">الكاميرا ومدة السماح بالتأخير</span>
         </a>
     </div>
 </div>

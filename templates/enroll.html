@@ -3,20 +3,19 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>تسجيل شخص جديد</title>
+<title>تسجيل طالب جديد</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
 
-<!-- Top navigation, shared across all pages -->
 <nav class="topbar">
     <div class="topbar-inner">
         <a href="/" class="brand"><span class="brand-mark">◎</span> نظام الحضور</a>
         <div class="topbar-links">
-            <a href="/enroll" class="topbar-link active">تسجيل شخص</a>
-            <a href="/attendance" class="topbar-link">تسجيل حضور</a>
-            <a href="/dashboard" class="topbar-link">التقارير</a>
-            <a href="/manage" class="topbar-link">الإدارة</a>
+            <a href="/enroll" class="topbar-link active">تسجيل طالب</a>
+            <a href="/week" class="topbar-link">الأسبوع</a>
+            <a href="/manage" class="topbar-link">الطلاب</a>
+            <a href="/settings" class="topbar-link">الإعدادات</a>
         </div>
     </div>
 </nav>
@@ -24,8 +23,8 @@
 <div class="page">
     <a href="/" class="back-link">→ الرئيسية</a>
     <div class="page-header">
-        <h1>تسجيل شخص جديد</h1>
-        <p>أدخل البيانات، ثم صوّر الوجه أو ارفع صورة واضحة</p>
+        <h1>تسجيل طالب جديد</h1>
+        <p>رقم الهوية/الوثيقة هو المعرّف الأساسي، ولا يمكن تكراره</p>
     </div>
 
     <div class="card">
@@ -34,12 +33,14 @@
             <input type="text" id="nameInput" placeholder="مثال: أحمد محمد">
         </div>
         <div class="field">
+            <label>رقم الهوية / الوثيقة *</label>
+            <input type="text" id="nationalIdInput" placeholder="هوية، جواز سفر، إقامة...">
+        </div>
+        <div class="field">
             <label>رقم الجوال (اختياري)</label>
             <input type="tel" id="phoneInput" placeholder="05xxxxxxxx">
         </div>
 
-        <!-- Two mutually exclusive capture methods; only one populates
-             currentImageDataUrl, which the submit handler reads from -->
         <div class="tabs">
             <button class="tab-btn active" data-tab="camera">📷 تصوير مباشر</button>
             <button class="tab-btn" data-tab="upload">⬆️ رفع صورة</button>
@@ -68,14 +69,13 @@
         </div>
 
         <div class="btn-row" style="margin-top:24px;">
-            <button id="submitBtn" class="btn full" disabled>✅ تسجيل الشخص</button>
+            <button id="submitBtn" class="btn full" disabled>✅ تسجيل الطالب</button>
         </div>
 
         <p id="statusMsg" class="status" style="margin-top:14px;"></p>
     </div>
 </div>
 
-<!-- Off-screen canvas used only to serialize captured video frames to base64 -->
 <canvas id="captureCanvas" style="display:none;"></canvas>
 
 <script>
@@ -86,7 +86,6 @@ const previewImg = document.getElementById('previewImg');
 const submitBtn = document.getElementById('submitBtn');
 const statusMsg = document.getElementById('statusMsg');
 
-// Holds whichever image (camera or upload) is ready to submit.
 let currentImageDataUrl = null;
 
 document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -102,8 +101,6 @@ navigator.mediaDevices.getUserMedia({ video: true })
     .then(stream => { video.srcObject = stream; })
     .catch(() => { statusMsg.textContent = "⚠️ لم يتم السماح بالوصول للكاميرا"; statusMsg.className = "status error"; });
 
-// Shared by both capture methods so the submit button only enables
-// once an actual image is ready, regardless of its source.
 function setPreview(dataUrl) {
     currentImageDataUrl = dataUrl;
     previewImg.src = dataUrl;
@@ -132,10 +129,16 @@ fileInput.addEventListener('change', () => {
 
 submitBtn.addEventListener('click', async () => {
     const name = document.getElementById('nameInput').value.trim();
+    const nationalId = document.getElementById('nationalIdInput').value.trim();
     const phone = document.getElementById('phoneInput').value.trim();
 
     if (!name) {
         statusMsg.textContent = "⚠️ الرجاء إدخال الاسم أولاً";
+        statusMsg.className = "status error";
+        return;
+    }
+    if (!nationalId) {
+        statusMsg.textContent = "⚠️ الرجاء إدخال رقم الهوية/الوثيقة";
         statusMsg.className = "status error";
         return;
     }
@@ -153,7 +156,7 @@ submitBtn.addEventListener('click', async () => {
         const response = await fetch('/api/enroll', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, phone, image: currentImageDataUrl })
+            body: JSON.stringify({ name, national_id: nationalId, phone, image: currentImageDataUrl })
         });
         const result = await response.json();
         statusMsg.textContent = result.message;
@@ -161,9 +164,8 @@ submitBtn.addEventListener('click', async () => {
         submitBtn.disabled = false;
 
         if (result.success) {
-            // Reset the form so the same page can be reused to enroll
-            // the next person without a manual refresh.
             document.getElementById('nameInput').value = "";
+            document.getElementById('nationalIdInput').value = "";
             document.getElementById('phoneInput').value = "";
             previewWrap.style.display = 'none';
             currentImageDataUrl = null;

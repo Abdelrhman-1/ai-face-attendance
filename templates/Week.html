@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>تسجيل الحضور</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/flatpickr/4.6.13/flatpickr.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/flatpickr/4.6.13/themes/dark.min.css">
+</head>
+<body>
+
+<nav class="topbar">
+    <div class="topbar-inner">
+        <a href="/" class="brand"><span class="brand-mark">◎</span> نظام الحضور</a>
+        <div class="topbar-links">
+            <a href="/enroll" class="topbar-link">تسجيل طالب</a>
+            <a href="/week" class="topbar-link active">تسجيل الحضور</a>
+            <a href="/manage" class="topbar-link">الطلاب</a>
+            <a href="/settings" class="topbar-link">الإعدادات</a>
+        </div>
+    </div>
+</nav>
+
+<div class="page wide">
+    <a href="/" class="back-link">→ الرئيسية</a>
+    <div class="page-header">
+        <h1>تسجيل الحضور</h1>
+        <p>اختر الدرس لبدء التسجيل، أو تصفح أسبوعاً آخر</p>
+    </div>
+
+    <div class="week-nav">
+        <button id="prevWeekBtn" class="btn secondary small">→ الأسبوع السابق</button>
+        <span class="week-label" id="weekLabel">...</span>
+        <button id="nextWeekBtn" class="btn secondary small">الأسبوع التالي ←</button>
+    </div>
+
+    <div class="btn-row" style="margin-bottom: 24px; flex-wrap: wrap;">
+        <button id="todayBtn" class="btn secondary small">📍 الأسبوع الحالي</button>
+        <input type="text" id="datePicker" class="input-sm" placeholder="اختر تاريخ...">
+        <select id="weekExportFilter" class="input-sm">
+            <option value="">كل الحالات</option>
+            <option value="حاضر">حاضر فقط</option>
+            <option value="متأخر">متأخر فقط</option>
+            <option value="معتذر">معتذر فقط</option>
+            <option value="غائب">غائب فقط</option>
+        </select>
+        <a id="exportBtn" href="#" class="btn">⬇️ تصدير هذا الأسبوع Excel</a>
+    </div>
+
+    <div class="card" style="margin-bottom: 28px;">
+        <h3 style="margin-top:0;">تصدير فترة حرة</h3>
+        <div class="btn-row" style="flex-wrap: wrap;">
+            <input type="text" id="rangeStart" class="input-sm" placeholder="من تاريخ...">
+            <span>إلى</span>
+            <input type="text" id="rangeEnd" class="input-sm" placeholder="إلى تاريخ...">
+            <select id="rangeExportFilter" class="input-sm">
+                <option value="">كل الحالات</option>
+                <option value="حاضر">حاضر فقط</option>
+                <option value="متأخر">متأخر فقط</option>
+                <option value="معتذر">معتذر فقط</option>
+                <option value="غائب">غائب فقط</option>
+            </select>
+            <button id="exportRangeBtn" class="btn secondary small">⬇️ تصدير الفترة</button>
+        </div>
+    </div>
+
+    <div id="lessonsContainer"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/flatpickr/4.6.13/flatpickr.min.js"></script>
+<script>
+let currentWeekStart = null;
+let weekData = null;
+
+const DAY_LABELS = { sunday: 'درس الأحد', thursday: 'درس الخميس' };
+const STATUS_LABELS = { not_started: 'لم يبدأ', in_progress: 'جاري الآن', closed: 'مغلق' };
+
+function formatIso(date) {
+    if (!date) return '';
+    const y = date.getFullYear(), m = String(date.getMonth() + 1).padStart(2, '0'), d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+}
+
+flatpickr("#datePicker", { dateFormat: 'd-m-Y', onChange: d => { document.getElementById('datePicker')._isoValue = formatIso(d[0]); } });
+flatpickr("#rangeStart", { dateFormat: 'd-m-Y', onChange: d => { document.getElementById('rangeStart')._isoValue = formatIso(d[0]); } });
+flatpickr("#rangeEnd", { dateFormat: 'd-m-Y', onChange: d => { document.getElementById('rangeEnd')._isoValue = formatIso(d[0]); } });
+
+// Fixed: previously used toISOString(), which converts to UTC and shifts
+// the date backward for any timezone ahead of UTC, causing "next week" to
+// silently land back on the same week. formatIso() reads local date parts
+// directly, so navigation is symmetric in both directions.
+function addDays(isoDate, days) {
+    const date = new Date(isoDate + 'T00:00:00');
+    date.setDate(date.getDate() + days);
+    return formatIso(date);
+}
+
+function updateExportLink() {
+    const filter = document.getElementById('weekExportFilter').value;
+    const params = new URLSearchParams({ date: currentWeekStart });
+    if (filter) params.set('status', filter);
+    document.getElementById('exportBtn').href = `/api/export/excel?${params.toString()}`;
+}
+
+async function loadWeekByDate(isoDate) {
+    const response = await fetch(`/api/week?date=${isoDate}`);
+    weekData = await response.json();
+    currentWeekStart = weekData.start_date;
+    document.getElementById('weekLabel').textContent = `الأسبوع بداية ${weekData.start_date}`;
+    updateExportLink();
+    await renderLessons();
+}
+
+async function loadCurrentWeek() {
+    await loadWeekByDate(formatIso(new Date()));
+}
+
+async function renderLessons() {
+    const container = document.getElementById('lessonsContainer');
+    container.innerHTML = '';
+    for (const lesson of [weekData.sunday_lesson, weekData.thursday_lesson]) {
+        const infoResponse = await fetch(`/api/lessons/${lesson.id}`);
+        const info = await infoResponse.json();
+        container.appendChild(buildLessonCard(info));
+    }
+}
+
+// Read-only overview card: counts are for reference only. Clicking to see
+// names, and setting apologies, now both live inside the lesson page
+// itself so everything about a lesson is in one place.
+function buildLessonCard({ lesson, summary }) {
+    const card = document.createElement('div');
+    card.className = 'lesson-card';
+    card.innerHTML = `
+        <div class="lesson-card-header">
+            <h3>${DAY_LABELS[lesson.day_type]} — ${lesson.lesson_date}</h3>
+            <span class="badge badge-pending">${STATUS_LABELS[lesson.status]}</span>
+        </div>
+        <div class="summary-grid">
+            <div class="summary-cell present"><div class="count">${summary['حاضر'] || 0}</div><div class="label">حاضر</div></div>
+            <div class="summary-cell late"><div class="count">${summary['متأخر'] || 0}</div><div class="label">متأخر</div></div>
+            <div class="summary-cell excused"><div class="count">${summary['معتذر'] || 0}</div><div class="label">معتذر</div></div>
+            <div class="summary-cell absent"><div class="count">${summary['غائب'] || 0}</div><div class="label">غائب</div></div>
+        </div>
+        <div class="btn-row">
+            <a href="/attendance?lesson_id=${lesson.id}" class="btn">📷 صفحة الدرس</a>
+        </div>
+    `;
+    return card;
+}
+
+document.getElementById('prevWeekBtn').addEventListener('click', () => loadWeekByDate(addDays(currentWeekStart, -7)));
+document.getElementById('nextWeekBtn').addEventListener('click', () => loadWeekByDate(addDays(currentWeekStart, 7)));
+document.getElementById('todayBtn').addEventListener('click', loadCurrentWeek);
+
+document.getElementById('datePicker').addEventListener('change', () => {
+    const iso = document.getElementById('datePicker')._isoValue;
+    if (iso) loadWeekByDate(iso);
+});
+
+document.getElementById('weekExportFilter').addEventListener('change', updateExportLink);
+
+document.getElementById('exportRangeBtn').addEventListener('click', () => {
+    const start = document.getElementById('rangeStart')._isoValue;
+    const end = document.getElementById('rangeEnd')._isoValue;
+    const filter = document.getElementById('rangeExportFilter').value;
+    if (!start || !end) { alert('حدد تاريخ البداية والنهاية أولاً'); return; }
+    const params = new URLSearchParams({ start, end });
+    if (filter) params.set('status', filter);
+    window.location.href = `/api/export/excel/range?${params.toString()}`;
+});
+
+loadCurrentWeek();
+</script>
+</body>
+</html>

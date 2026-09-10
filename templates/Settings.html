@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>الإعدادات</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/flatpickr/4.6.13/flatpickr.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/flatpickr/4.6.13/themes/dark.min.css">
+</head>
+<body>
+
+<nav class="topbar">
+    <div class="topbar-inner">
+        <a href="/" class="brand"><span class="brand-mark">◎</span> نظام الحضور</a>
+        <div class="topbar-links">
+            <a href="/enroll" class="topbar-link">تسجيل طالب</a>
+            <a href="/week" class="topbar-link">الأسبوع</a>
+            <a href="/manage" class="topbar-link">الطلاب</a>
+            <a href="/settings" class="topbar-link active">الإعدادات</a>
+        </div>
+    </div>
+</nav>
+
+<div class="page">
+    <a href="/" class="back-link">→ الرئيسية</a>
+    <div class="page-header"><h1>الإعدادات</h1></div>
+
+    <h3>إعدادات الحضور</h3>
+    <div class="card" style="margin-bottom: 24px;">
+        <div class="field">
+            <label>مدة السماح قبل احتساب التأخير (بالدقائق)</label>
+            <input type="text" id="lateThresholdInput" placeholder="مثال: 30">
+        </div>
+        <button id="saveThresholdBtn" class="btn">💾 حفظ</button>
+        <p id="thresholdMsg" class="status" style="margin-top: 10px;"></p>
+    </div>
+
+    <h3>الاعتذارات طويلة المدى</h3>
+    <div class="card" style="margin-bottom: 24px;">
+        <p style="color: var(--text-dim); font-size: 13px; margin-top:0;">
+            طالب معتذر عن كل الدروس ضمن فترة محددة (مثلاً طوال الترم) لن يُحسب غائباً في أي درس واقع بهذه الفترة.
+        </p>
+        <div class="field">
+            <label>الطالب</label>
+            <input type="text" id="termStudentSearch" class="text-input" placeholder="ابحث بالاسم أو رقم الهوية...">
+            <div class="search-results" id="termStudentResults" style="display:none;"></div>
+            <p id="termSelectedStudent" class="status" style="text-align:right;"></p>
+        </div>
+        <div class="field">
+            <label>من تاريخ</label>
+            <input type="text" id="termStart" class="text-input" placeholder="اختر تاريخ...">
+        </div>
+        <div class="field">
+            <label>إلى تاريخ</label>
+            <input type="text" id="termEnd" class="text-input" placeholder="اختر تاريخ...">
+        </div>
+        <button id="addTermApologyBtn" class="btn">➕ إضافة اعتذار طويل المدى</button>
+        <p id="termMsg" class="status" style="margin-top: 10px;"></p>
+
+        <div class="table-wrap" style="margin-top: 20px;">
+            <table class="data-table">
+                <thead><tr><th>الطالب</th><th>من</th><th>إلى</th><th>إجراء</th></tr></thead>
+                <tbody id="termApologiesBody">
+                    <tr class="empty-row"><td colspan="4">جاري التحميل...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <h3>إعدادات الكاميرا</h3>
+    <div class="card">
+        <div class="field">
+            <label>اسم الكاميرا</label>
+            <input type="text" id="cameraName" placeholder="مثال: كاميرا المدخل">
+        </div>
+        <div class="field">
+            <label>عنوان IP</label>
+            <input type="text" id="cameraIp" placeholder="192.168.1.64">
+        </div>
+        <div class="field">
+            <label>المنفذ (Port)</label>
+            <input type="text" id="cameraPort" placeholder="554">
+        </div>
+        <div class="field">
+            <label>اسم المستخدم</label>
+            <input type="text" id="cameraUsername" placeholder="admin">
+        </div>
+        <div class="field">
+            <label>كلمة المرور</label>
+            <input type="text" id="cameraPassword" placeholder="••••••••">
+        </div>
+        <div class="field">
+            <label>البروتوكول</label>
+            <input type="text" id="cameraProtocol" placeholder="rtsp" value="rtsp">
+        </div>
+        <div class="field">
+            <label>مسار البث (Stream Path)</label>
+            <input type="text" id="cameraStreamPath" placeholder="/Streaming/Channels/102">
+        </div>
+
+        <div class="btn-row">
+            <button id="saveCameraBtn" class="btn">💾 حفظ الإعدادات</button>
+            <button id="testCameraBtn" class="btn secondary">🔌 اختبار الاتصال</button>
+        </div>
+
+        <p style="margin-top: 16px;">
+            حالة الكاميرا: <span class="badge badge-pending" id="cameraStatusBadge">غير معروفة</span>
+        </p>
+        <p id="cameraMsg" class="status"></p>
+    </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/flatpickr/4.6.13/flatpickr.min.js"></script>
+<script>
+function formatIso(date) {
+    if (!date) return '';
+    const y = date.getFullYear(), m = String(date.getMonth() + 1).padStart(2, '0'), d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+}
+flatpickr("#termStart", { dateFormat: 'd-m-Y', onChange: d => { document.getElementById('termStart')._isoValue = formatIso(d[0]); } });
+flatpickr("#termEnd", { dateFormat: 'd-m-Y', onChange: d => { document.getElementById('termEnd')._isoValue = formatIso(d[0]); } });
+
+let selectedTermStudentId = null;
+
+const termStudentSearch = document.getElementById('termStudentSearch');
+const termStudentResults = document.getElementById('termStudentResults');
+
+termStudentSearch.addEventListener('input', async () => {
+    const query = termStudentSearch.value.trim();
+    selectedTermStudentId = null;
+    if (!query) { termStudentResults.style.display = 'none'; return; }
+
+    const response = await fetch(`/api/students/search?q=${encodeURIComponent(query)}`);
+    const students = await response.json();
+
+    termStudentResults.innerHTML = students.length === 0
+        ? '<div class="search-result-item">لا توجد نتائج</div>'
+        : students.map(s => `
+            <div class="search-result-item" data-id="${s.id}" data-name="${s.name}">
+                <span class="sr-name">${s.name}</span><span class="sr-id">${s.national_id}</span>
+            </div>
+        `).join('');
+
+    termStudentResults.querySelectorAll('.search-result-item[data-id]').forEach(item => {
+        item.addEventListener('click', () => {
+            selectedTermStudentId = parseInt(item.dataset.id);
+            document.getElementById('termSelectedStudent').textContent = `تم اختيار: ${item.dataset.name}`;
+            termStudentResults.style.display = 'none';
+            termStudentSearch.value = item.dataset.name;
+        });
+    });
+    termStudentResults.style.display = 'block';
+});
+
+async function loadTermApologies() {
+    const response = await fetch('/api/term-apologies');
+    const apologies = await response.json();
+    const tbody = document.getElementById('termApologiesBody');
+
+    if (apologies.length === 0) {
+        tbody.innerHTML = "<tr class='empty-row'><td colspan='4'>لا توجد اعتذارات طويلة المدى</td></tr>";
+        return;
+    }
+
+    tbody.innerHTML = apologies.map(a => `
+        <tr>
+            <td>${a.student_name} <span class="cr-id">${a.national_id}</span></td>
+            <td class="mono">${a.start_date}</td>
+            <td class="mono">${a.end_date}</td>
+            <td><button class="btn danger small" data-id="${a.id}">🗑️ حذف</button></td>
+        </tr>
+    `).join('');
+
+    tbody.querySelectorAll('button[data-id]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            await fetch(`/api/term-apologies/${btn.dataset.id}`, { method: 'DELETE' });
+            loadTermApologies();
+        });
+    });
+}
+
+document.getElementById('addTermApologyBtn').addEventListener('click', async () => {
+    const msg = document.getElementById('termMsg');
+    const startDate = document.getElementById('termStart')._isoValue;
+    const endDate = document.getElementById('termEnd')._isoValue;
+
+    if (!selectedTermStudentId) {
+        msg.textContent = '⚠️ اختر طالباً من نتائج البحث أولاً';
+        msg.className = 'status error';
+        return;
+    }
+    if (!startDate || !endDate) {
+        msg.textContent = '⚠️ حدد تاريخ البداية والنهاية';
+        msg.className = 'status error';
+        return;
+    }
+
+    const response = await fetch('/api/term-apologies', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ student_id: selectedTermStudentId, start_date: startDate, end_date: endDate })
+    });
+    const result = await response.json();
+    msg.textContent = result.success ? '✅ تمت الإضافة' : result.message;
+    msg.className = 'status ' + (result.success ? 'success' : 'error');
+
+    if (result.success) {
+        selectedTermStudentId = null;
+        termStudentSearch.value = '';
+        document.getElementById('termSelectedStudent').textContent = '';
+        loadTermApologies();
+    }
+});
+
+async function loadSettings() {
+    const thresholdRes = await fetch('/api/settings/late-threshold');
+    const thresholdData = await thresholdRes.json();
+    document.getElementById('lateThresholdInput').value = thresholdData.minutes;
+
+    const cameraRes = await fetch('/api/camera-settings');
+    const camera = await cameraRes.json();
+    if (camera && camera.ip_address) {
+        document.getElementById('cameraName').value = camera.name || '';
+        document.getElementById('cameraIp').value = camera.ip_address || '';
+        document.getElementById('cameraPort').value = camera.port || '';
+        document.getElementById('cameraUsername').value = camera.username || '';
+        document.getElementById('cameraPassword').value = camera.password || '';
+        document.getElementById('cameraProtocol').value = camera.protocol || 'rtsp';
+        document.getElementById('cameraStreamPath').value = camera.stream_path || '';
+        updateStatusBadge(camera.last_status);
+    }
+
+    loadTermApologies();
+}
+
+function updateStatusBadge(status) {
+    const badge = document.getElementById('cameraStatusBadge');
+    const labels = { connected: 'متصلة', disconnected: 'غير متصلة', unknown: 'غير معروفة' };
+    const classes = { connected: 'badge-in', disconnected: 'badge-absent', unknown: 'badge-pending' };
+    badge.textContent = labels[status] || 'غير معروفة';
+    badge.className = 'badge ' + (classes[status] || 'badge-pending');
+}
+
+document.getElementById('saveThresholdBtn').addEventListener('click', async () => {
+    const minutes = parseInt(document.getElementById('lateThresholdInput').value, 10);
+    const msg = document.getElementById('thresholdMsg');
+    if (!minutes || minutes <= 0) {
+        msg.textContent = '⚠️ أدخل عدد دقائق صحيح';
+        msg.className = 'status error';
+        return;
+    }
+    const response = await fetch('/api/settings/late-threshold', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ minutes })
+    });
+    const result = await response.json();
+    msg.textContent = `✅ تم الحفظ (${result.minutes} دقيقة)`;
+    msg.className = 'status success';
+});
+
+document.getElementById('saveCameraBtn').addEventListener('click', async () => {
+    const msg = document.getElementById('cameraMsg');
+    const payload = {
+        name: document.getElementById('cameraName').value.trim() || 'الكاميرا الرئيسية',
+        ip_address: document.getElementById('cameraIp').value.trim(),
+        port: parseInt(document.getElementById('cameraPort').value, 10) || 554,
+        username: document.getElementById('cameraUsername').value.trim(),
+        password: document.getElementById('cameraPassword').value,
+        protocol: document.getElementById('cameraProtocol').value.trim() || 'rtsp',
+        stream_path: document.getElementById('cameraStreamPath').value.trim(),
+    };
+    if (!payload.ip_address) {
+        msg.textContent = '⚠️ أدخل عنوان IP الكاميرا';
+        msg.className = 'status error';
+        return;
+    }
+
+    const response = await fetch('/api/camera-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    const result = await response.json();
+    msg.textContent = result.success ? '✅ تم حفظ إعدادات الكاميرا' : '⚠️ فشل الحفظ';
+    msg.className = 'status ' + (result.success ? 'success' : 'error');
+});
+
+document.getElementById('testCameraBtn').addEventListener('click', async () => {
+    const msg = document.getElementById('cameraMsg');
+    msg.textContent = '⏳ جاري الاختبار (قد يستغرق حتى 6 ثوانٍ)...';
+    msg.className = 'status';
+
+    const response = await fetch('/api/camera-settings/test', { method: 'POST' });
+    const result = await response.json();
+    msg.textContent = result.message;
+    msg.className = 'status ' + (result.success ? 'success' : 'error');
+    updateStatusBadge(result.status);
+});
+
+loadSettings();
+</script>
+</body>
+</html>

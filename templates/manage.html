@@ -3,20 +3,19 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>إدارة الأشخاص</title>
+<title>إدارة الطلاب</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
 
-<!-- Top navigation, shared across all pages -->
 <nav class="topbar">
     <div class="topbar-inner">
         <a href="/" class="brand"><span class="brand-mark">◎</span> نظام الحضور</a>
         <div class="topbar-links">
-            <a href="/enroll" class="topbar-link">تسجيل شخص</a>
-            <a href="/attendance" class="topbar-link">تسجيل حضور</a>
-            <a href="/dashboard" class="topbar-link">التقارير</a>
-            <a href="/manage" class="topbar-link active">الإدارة</a>
+            <a href="/enroll" class="topbar-link">تسجيل طالب</a>
+            <a href="/week" class="topbar-link">الأسبوع</a>
+            <a href="/manage" class="topbar-link active">الطلاب</a>
+            <a href="/settings" class="topbar-link">الإعدادات</a>
         </div>
     </div>
 </nav>
@@ -24,25 +23,21 @@
 <div class="page wide">
     <a href="/" class="back-link">→ الرئيسية</a>
     <div class="page-header">
-        <h1>إدارة الأشخاص المسجلين</h1>
-        <p>عرض وحذف بيانات الأشخاص المسجلين بالنظام</p>
+        <h1>إدارة الطلاب</h1>
+        <p>ابحث بالاسم، رقم الهوية، أو رقم الجوال — يعمل البحث أثناء الكتابة</p>
     </div>
 
     <div class="toolbar">
-        <span class="count-pill" id="countMsg">جاري التحميل...</span>
-        <a href="/enroll" class="btn small">➕ إضافة شخص جديد</a>
+        <input type="text" id="searchInput" class="input-sm" style="flex:1; max-width: 400px;" placeholder="🔍 ابحث هنا...">
+        <a href="/enroll" class="btn small">➕ إضافة طالب</a>
     </div>
+
+    <span class="count-pill" id="countMsg">جاري التحميل...</span>
 
     <div class="table-wrap">
         <table class="data-table">
             <thead>
-                <tr>
-                    <th>#</th>
-                    <th>الاسم</th>
-                    <th>رقم الجوال</th>
-                    <th>تاريخ التسجيل</th>
-                    <th>إجراء</th>
-                </tr>
+                <tr><th>#</th><th>الاسم</th><th>رقم الهوية</th><th>الجوال</th><th>إجراء</th></tr>
             </thead>
             <tbody id="tableBody">
                 <tr class="empty-row"><td colspan="5">جاري التحميل...</td></tr>
@@ -52,49 +47,39 @@
 </div>
 
 <script>
-async function loadPersons() {
-    const response = await fetch('/api/persons');
-    const persons = await response.json();
+const searchInput = document.getElementById('searchInput');
+const tableBody = document.getElementById('tableBody');
+const countMsg = document.getElementById('countMsg');
 
-    const tbody = document.getElementById('tableBody');
-    document.getElementById('countMsg').textContent = `${persons.length} شخص مسجل`;
+async function loadStudents(query = '') {
+    const url = query ? `/api/students/search?q=${encodeURIComponent(query)}` : '/api/students/search';
+    const response = await fetch(url);
+    const students = await response.json();
+    renderTable(students);
+}
 
-    if (persons.length === 0) {
-        tbody.innerHTML = "<tr class='empty-row'><td colspan='5'>لا يوجد أشخاص مسجلين بعد</td></tr>";
+function renderTable(students) {
+    countMsg.textContent = `${students.length} طالب`;
+    if (students.length === 0) {
+        tableBody.innerHTML = "<tr class='empty-row'><td colspan='5'>لا توجد نتائج</td></tr>";
         return;
     }
-
-    tbody.innerHTML = persons.map((p, i) => {
-        const date = new Date(p.created_at).toLocaleDateString('ar-EG');
-        return `
-            <tr id="row-${p.id}">
-                <td class="mono">${i + 1}</td>
-                <td>${p.name}</td>
-                <td class="mono">${p.phone || '—'}</td>
-                <td class="mono">${date}</td>
-                <td><button class="btn danger small" onclick="deletePerson(${p.id}, '${p.name}')">🗑️ حذف</button></td>
-            </tr>
-        `;
-    }).join('');
+    tableBody.innerHTML = students.map((s, i) => `
+        <tr>
+            <td class="mono">${i + 1}</td>
+            <td>${s.name}</td>
+            <td class="mono">${s.national_id}</td>
+            <td class="mono">${s.phone || '—'}</td>
+            <td><a href="/manage/${s.id}" class="btn secondary small">فتح الملف</a></td>
+        </tr>
+    `).join('');
 }
 
-// Re-fetches the full list after a successful delete instead of just
-// removing the row, so the row numbering (#) stays consistent.
-async function deletePerson(id, name) {
-    if (!confirm(`هل أنت متأكد من حذف "${name}"؟ هذا الإجراء لا يمكن التراجع عنه.`)) return;
+// Search runs on every keystroke; SQLite LIKE queries at this scale are
+// effectively instant, so no debounce is needed.
+searchInput.addEventListener('input', () => loadStudents(searchInput.value.trim()));
 
-    const response = await fetch(`/api/persons/${id}`, { method: 'DELETE' });
-    const result = await response.json();
-
-    if (result.success) {
-        document.getElementById(`row-${id}`).remove();
-        loadPersons();
-    } else {
-        alert("⚠️ فشل الحذف: " + result.message);
-    }
-}
-
-loadPersons();
+loadStudents();
 </script>
 </body>
 </html>
