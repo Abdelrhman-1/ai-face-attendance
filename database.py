@@ -115,10 +115,15 @@ init_db()
 
 student_cache: list[dict] = []
 
+# Pre-built NumPy matrix containing all student face embeddings.
+# Shape: (number_of_students, 128)
+student_encoding_matrix = np.empty((0, 128), dtype=np.float64)
 
 def load_student_cache() -> list[dict]:
-    """Refresh the in-memory students cache from the database."""
+    """Refresh in-memory students cache and pre-build encoding matrix."""
     global student_cache
+    global student_encoding_matrix
+
     with _db_lock:
         rows = _connection.execute(
             "SELECT id, name, national_id, face_encoding FROM students"
@@ -129,18 +134,39 @@ def load_student_cache() -> list[dict]:
             "id": row["id"],
             "name": row["name"],
             "national_id": row["national_id"],
-            "encoding": np.frombuffer(row["face_encoding"], dtype=np.float64),
+            "encoding": np.frombuffer(
+                row["face_encoding"],
+                dtype=np.float64,
+            ),
         }
         for row in rows
     ]
 
-    print(f"Loaded {len(student_cache)} students into memory.")
+    if student_cache:
+        student_encoding_matrix = np.vstack(
+            [student["encoding"] for student in student_cache]
+        ).astype(np.float64, copy=False)
+    else:
+        student_encoding_matrix = np.empty(
+            (0, 128),
+            dtype=np.float64,
+        )
+
+    print(
+        f"Loaded {len(student_cache)} students into memory "
+        f"with encoding matrix shape {student_encoding_matrix.shape}."
+    )
+
     return student_cache
 
 
 def get_cached_students() -> list[dict]:
     """Return the cached list of students used during recognition."""
     return student_cache
+
+def get_cached_student_encodings() -> np.ndarray:
+    """Return the pre-built face embedding matrix."""
+    return student_encoding_matrix
 
 
 # --- Students ---
@@ -180,6 +206,22 @@ def add_student(
         "national_id": national_id,
         "encoding": encoding,
     })
+
+    # Rebuild the small in-memory embedding matrix.
+    global student_encoding_matrix
+
+    if student_encoding_matrix.size == 0:
+        student_encoding_matrix = np.asarray(
+            [encoding],
+            dtype=np.float64,
+        )
+    else:
+        student_encoding_matrix = np.vstack(
+            [
+                student_encoding_matrix,
+                np.asarray(encoding, dtype=np.float64),
+            ]
+        )
 
     return {"id": student_id, "name": name, "national_id": national_id, "phone": phone}
 
